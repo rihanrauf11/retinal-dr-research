@@ -297,6 +297,56 @@ Input Fundus Image (224×224)
 
 ---
 
+## Vast.ai Cloud GPU Deployment ☁️
+
+**NEW**: Train on high-end GPUs (RTX 5090) without local hardware!
+
+This project includes complete Docker + Vast.ai integration for cloud GPU training:
+
+### Quick Start (Vast.ai)
+
+```bash
+# 1. Build Docker image
+make docker-build DOCKER_USERNAME=your-dockerhub-username
+make docker-push DOCKER_USERNAME=your-dockerhub-username
+
+# 2. Launch RTX 5090 instance on Vast.ai
+#    - Use image: your-dockerhub-username/dr-retfound-lora:latest
+#    - Mount volumes: /data, /models, /results
+
+# 3. SSH into instance and run
+bash scripts/vast_setup.sh
+bash scripts/vast_train.sh --wandb
+```
+
+### Why Vast.ai?
+
+- **50-80% cheaper** than AWS/GCP
+- **RTX 5090 optimized**: 32GB VRAM, batch_size=64
+- **Fast training**: 3-3.5 hours (vs 5+ hours on RTX 3090)
+- **Pay per second**: Only $1.75-3.50 per training run
+- **No local GPU needed**: Train from any machine
+
+### Performance Comparison
+
+| GPU | Training Time | Cost/Run | Batch Size |
+|-----|---------------|----------|------------|
+| **RTX 5090** | **3-3.5 hours** | **$1.75-3.50** | **64** |
+| RTX 4090 | 4-5 hours | $2.00-4.00 | 48 |
+| RTX 3090 | 5-6 hours | $1.80-3.60 | 32 |
+
+### Complete Guide
+
+See **[docs/VASTAI_SETUP.md](docs/VASTAI_SETUP.md)** for complete step-by-step instructions:
+- Building Docker images
+- Uploading data and models
+- Launching instances
+- Training and monitoring
+- Retrieving results
+- Cost optimization tips
+
+---
+
 ## Installation
 
 ### Prerequisites

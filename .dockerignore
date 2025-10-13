@@ -1,0 +1,143 @@
+# .dockerignore - Keep Docker image size minimal
+# This prevents large files/directories from being copied into the Docker image
+
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Data directories (will be mounted as volumes)
+data/
+!data/.gitkeep
+
+# Model weights (will be mounted as volumes)
+models/
+!models/.gitkeep
+
+# Results and outputs (will be mounted as volumes)
+results/
+!results/.gitkeep
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+*.ipynb
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Documentation (include only essential docs)
+# docs/  # Commented out - we include docs in the image
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ebs.txt
+
+# Large files
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.pth
+*.pt
+*.onnx
+*.pb
+
+# Environment files (contains secrets)
+.env
+.env.local
+.env.*.local
+
+# Jupyter notebooks (optional - remove if you want notebooks in image)
+notebooks/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# README and docs (we selectively include these)
+# Keep these commented to include them
+# README.md
+# CLAUDE.md
+
+# Other
+*.csv
+*.zip
+*.tar.gz
+*.rar
+
+# Kaggle credentials
+kaggle.json
+.kaggle/
+
+# W&B local files
+wandb/
+
+# Optuna database files
+*.db
+
+# VS Code
+.vscode/
+
+# Keep directory structure but ignore contents
+**/checkpoints/*.pth
+**/logs/*.log
