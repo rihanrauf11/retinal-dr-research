@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Data
+data/
+*.csv
+*.h5
+*.hdf5
+
+# Model Files
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+results/checkpoints/
+results/logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+results/logs/
+
+# Figures (optional - uncomment if you want to track figures)
+# results/figures/
+
+# Temporary files
+*.tmp
+*.bak

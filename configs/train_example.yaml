@@ -1,0 +1,69 @@
+# Training Example Configuration
+# ===============================
+# This configuration is optimized for actual training on real data
+
+# Data Configuration
+data:
+  # Update these paths to point to your actual data
+  train_csv: data/aptos/train.csv
+  train_img_dir: data/aptos/train_images
+
+  # Test data (optional, for final evaluation)
+  test_csv: data/aptos/test.csv
+  test_img_dir: data/aptos/test_images
+
+# Model Configuration
+model:
+  # Choose your model architecture
+  # Popular choices: resnet50, efficientnet_b3, vit_base_patch16_224
+  model_name: resnet50
+
+  # Number of DR severity classes
+  num_classes: 5
+
+  # Use pretrained weights (recommended)
+  pretrained: true
+
+# Training Configuration
+training:
+  # Adjust batch size based on your GPU memory
+  # ResNet50 @ 224: 16-32
+  # EfficientNet-B3 @ 300: 16-24
+  # ViT @ 224: 8-16
+  batch_size: 16
+
+  # Number of training epochs
+  num_epochs: 30
+
+  # Learning rate (lower for fine-tuning)
+  learning_rate: 0.0001
+
+  # Weight decay for regularization
+  weight_decay: 0.0001
+
+# Image Configuration
+image:
+  # Image size (must match model requirements)
+  # ResNet/EfficientNet: 224-512
+  # ViT: 224 or 384
+  img_size: 224
+
+# System Configuration
+system:
+  # Number of data loading workers
+  # Set to 0 for debugging, 4-8 for training
+  num_workers: 4
+
+  # Random seed for reproducibility
+  seed: 42
+
+  # Device: 'cuda', 'cpu', or 'mps'
+  device: cuda
+
+# Output Paths
+paths:
+  # Where to save model checkpoints
+  checkpoint_dir: results/checkpoints/resnet50_baseline
+
+  # Where to save training logs
+  log_dir: results/logs/resnet50_baseline

@@ -1,0 +1,167 @@
+# RETFound + LoRA Configuration for Diabetic Retinopathy Classification
+#
+# This configuration uses Low-Rank Adaptation (LoRA) for parameter-efficient
+# fine-tuning of the RETFound foundation model. LoRA trains <1% of parameters
+# while maintaining competitive performance with full fine-tuning.
+#
+# Key Benefits:
+# - 99.7% reduction in trainable parameters
+# - 2-3x faster training
+# - 30-40% less memory usage
+# - Prevents catastrophic forgetting
+
+model:
+  model_name: retfound_lora
+  num_classes: 5
+  pretrained: true
+  pretrained_path: "models/RETFound_cfp_weights.pth"
+
+  # LoRA-specific parameters
+  lora_r: 8                    # LoRA rank (controls adapter capacity)
+                               # Common values: 4, 8, 16, 32
+                               # Higher = more capacity but more parameters
+
+  lora_alpha: 32               # LoRA scaling factor (typically 2-4x rank)
+                               # Controls magnitude of LoRA updates
+
+  lora_dropout: 0.1            # Dropout for LoRA layers (regularization)
+
+  head_dropout: 0.3            # Dropout before classification head
+
+  target_modules: ["qkv"]      # Modules to apply LoRA to
+                               # Options: ["qkv"], ["qkv", "proj"]
+                               # qkv = attention QKV projections
+                               # proj = attention output projection
+
+training:
+  # LoRA typically needs higher learning rate than full fine-tuning
+  # Because we're only training adapters, not updating pretrained weights
+  batch_size: 32               # Can use larger batch with LoRA (less memory)
+  num_epochs: 20               # LoRA often converges faster
+  learning_rate: 0.0005        # Higher LR than full fine-tuning (1e-4 to 5e-4)
+  weight_decay: 0.01           # Weight decay for regularization
+
+  # Optimizer settings
+  optimizer: adamw
+  betas: [0.9, 0.999]
+  eps: 1.0e-08
+
+  # Learning rate scheduling
+  scheduler: cosine            # Options: cosine, step, plateau, none
+  warmup_epochs: 2             # Warmup for stable training
+  min_lr: 1.0e-06              # Minimum LR for cosine annealing
+
+  # Early stopping
+  patience: 5
+  min_delta: 0.001
+
+  # Gradient clipping
+  grad_clip: 1.0               # Prevent exploding gradients
+
+  # Mixed precision training (recommended for speed)
+  mixed_precision: true
+
+image:
+  # RETFound was pretrained on 224x224 images
+  input_size: 224
+
+  # ImageNet normalization (standard for ViT)
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+
+  # Data augmentation (applied to training set only)
+  augmentation:
+    resize: 256                # Resize before random crop
+    random_crop: 224           # Random crop to input size
+    horizontal_flip: 0.5       # 50% chance of horizontal flip
+    vertical_flip: 0.3         # 30% chance of vertical flip
+    rotation: 15               # Random rotation up to ±15 degrees
+    color_jitter:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.2
+      hue: 0.1
+    coarse_dropout:            # Randomly drop patches
+      max_holes: 4
+      max_height: 20
+      max_width: 20
+      p: 0.5
+
+data:
+  train_csv: "data/train.csv"
+  test_csv: "data/test.csv"
+  img_dir: "data/train_images"
+
+  # Data split
+  val_split: 0.2               # 80/20 train/val split
+  stratify: true               # Maintain class distribution
+
+  # Data loading
+  num_workers: 4
+  pin_memory: true             # Faster data transfer to GPU
+  persistent_workers: true     # Keep workers alive between epochs
+
+paths:
+  output_dir: "results/retfound_lora"
+  checkpoint_dir: "results/retfound_lora/checkpoints"
+  log_dir: "results/retfound_lora/logs"
+
+  # Save checkpoints
+  save_every_n_epochs: 5       # Save checkpoint every 5 epochs
+  save_best_only: false        # Also save best model
+  keep_last_n: 3               # Keep last 3 checkpoints only
+
+system:
+  device: "cuda"               # cuda, mps, or cpu
+  seed: 42                     # For reproducibility
+  cudnn_benchmark: true        # Faster training on fixed input size
+  cudnn_deterministic: false   # Set to true for full reproducibility
+
+# Logging and monitoring
+logging:
+  log_interval: 10             # Log every 10 batches
+  save_interval: 100           # Save checkpoint every 100 batches
+
+  # Metrics to track
+  metrics:
+    - accuracy
+    - f1_score
+    - cohen_kappa
+    - confusion_matrix
+
+  # Tensorboard
+  use_tensorboard: true
+  tensorboard_dir: "results/retfound_lora/tensorboard"
+
+# Evaluation
+evaluation:
+  eval_interval: 1             # Evaluate every epoch
+  test_at_end: true            # Run final test after training
+
+  # Metrics
+  compute_per_class_metrics: true
+  save_predictions: true
+  save_confusion_matrix: true
+
+# Notes on LoRA hyperparameters:
+#
+# lora_r (rank):
+#   - r=4:  Very efficient, use for large datasets or when compute is limited
+#   - r=8:  Good balance, recommended for most cases
+#   - r=16: More capacity, use for small datasets or complex tasks
+#   - r=32: High capacity, approaching full fine-tuning performance
+#
+# lora_alpha:
+#   - Common practice: alpha = 4 * r
+#   - Higher alpha = stronger LoRA updates
+#   - Lower alpha = more conservative updates
+#
+# learning_rate:
+#   - LoRA needs higher LR than full fine-tuning
+#   - Start with 2-5x higher than full fine-tuning LR
+#   - Typical range: 1e-4 to 5e-4
+#
+# batch_size:
+#   - LoRA uses less memory, so you can use larger batches
+#   - Larger batches = more stable gradients
+#   - Recommended: 32-64 (vs 16-32 for full fine-tuning)

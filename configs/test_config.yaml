@@ -1,0 +1,61 @@
+# Test Configuration for End-to-End Pipeline Testing
+# ====================================================
+# This configuration is designed for quick validation of the training
+# pipeline using the sample dataset with minimal resources and time.
+
+# Data Configuration
+# ------------------
+data:
+  # Using sample dataset (70 total images: 50 train, 20 val)
+  train_csv: data/sample/train.csv
+  train_img_dir: data/sample/images
+  test_csv: data/sample/val.csv
+  test_img_dir: data/sample/images
+
+# Model Configuration
+# -------------------
+model:
+  # Using ResNet50 as lightweight baseline for testing
+  model_name: resnet50
+  num_classes: 5
+  pretrained: true
+
+# Training Configuration
+# ----------------------
+training:
+  # Small batch size for quick testing
+  batch_size: 4
+
+  # Only 2 epochs to verify pipeline works
+  num_epochs: 2
+
+  # Standard learning rate for fine-tuning
+  learning_rate: 0.0001
+
+  # Weight decay for regularization
+  weight_decay: 0.0001
+
+# Image Configuration
+# -------------------
+image:
+  # Standard ImageNet size for ResNet
+  img_size: 224
+
+# System Configuration
+# --------------------
+system:
+  # Reduced workers for test
+  num_workers: 2
+
+  # Fixed seed for reproducibility
+  seed: 42
+
+  # Auto-detect device (cuda/mps/cpu)
+  device: cpu
+
+# Paths Configuration
+# -------------------
+paths:
+  # Separate output directory for test runs
+  checkpoint_dir: results/test_run/checkpoints
+  log_dir: results/test_run/logs

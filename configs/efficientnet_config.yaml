@@ -1,0 +1,36 @@
+# EfficientNet Configuration
+# ===========================
+# Configuration for training with EfficientNet-B3
+# Balanced between model size and accuracy
+
+data:
+  train_csv: data/aptos/train.csv
+  train_img_dir: data/aptos/train_images
+  test_csv: data/aptos/test.csv
+  test_img_dir: data/aptos/test_images
+
+model:
+  # EfficientNet-B3 - good balance of speed and accuracy
+  model_name: efficientnet_b3
+  num_classes: 5
+  pretrained: true
+
+training:
+  # Can use larger batch size with EfficientNet
+  batch_size: 32
+  num_epochs: 25
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+
+image:
+  # EfficientNet-B3 native resolution
+  img_size: 300
+
+system:
+  num_workers: 4
+  seed: 42
+  device: cuda
+
+paths:
+  checkpoint_dir: results/checkpoints/efficientnet_b3
+  log_dir: results/logs/efficientnet_b3

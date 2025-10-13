@@ -1,0 +1,92 @@
+# Default Configuration for Diabetic Retinopathy Classification
+# =================================================================
+# This YAML file defines the default configuration for training and
+# evaluating diabetic retinopathy classification models.
+#
+# Usage:
+#   from scripts.config import Config
+#   config = Config.from_yaml('configs/default_config.yaml')
+
+# Data Configuration
+# ------------------
+# Paths to training and testing data
+data:
+  # Path to training CSV file (must contain 'id_code' and 'diagnosis' columns)
+  train_csv: data/aptos/train.csv
+
+  # Directory containing training images
+  train_img_dir: data/aptos/train_images
+
+  # Path to test/validation CSV file
+  test_csv: data/aptos/test.csv
+
+  # Directory containing test/validation images
+  test_img_dir: data/aptos/test_images
+
+# Model Configuration
+# -------------------
+# Model architecture and initialization settings
+model:
+  # Model architecture name
+  # Options: resnet50, resnet101, efficientnet_b0-b7, vit_base_patch16_224, etc.
+  # See timm.list_models() for all available models
+  model_name: resnet50
+
+  # Number of output classes (5 for DR: No DR, Mild, Moderate, Severe, Proliferative)
+  num_classes: 5
+
+  # Use pretrained weights (ImageNet or other)
+  pretrained: true
+
+# Training Configuration
+# ----------------------
+# Hyperparameters for model training
+training:
+  # Batch size for training and validation
+  # Adjust based on available GPU memory
+  batch_size: 16
+
+  # Number of training epochs
+  num_epochs: 20
+
+  # Initial learning rate for optimizer
+  # Common values: 1e-3 (from scratch), 1e-4 (fine-tuning)
+  learning_rate: 0.0001
+
+  # Weight decay (L2 regularization)
+  # Helps prevent overfitting
+  weight_decay: 0.0001
+
+# Image Configuration
+# -------------------
+# Image preprocessing settings
+image:
+  # Target image size (images will be resized to img_size x img_size)
+  # Common values: 224 (ResNet, EfficientNet), 384 (ViT large), 512 (high-res)
+  img_size: 224
+
+# System Configuration
+# --------------------
+# Hardware and system settings
+system:
+  # Number of worker processes for data loading
+  # Set to 0 for debugging, 4-8 for training
+  num_workers: 4
+
+  # Random seed for reproducibility
+  # Set to a fixed value for reproducible experiments
+  seed: 42
+
+  # Device for training: 'cuda', 'cpu', or 'mps' (Apple Silicon)
+  # Auto-detected if not specified
+  device: cuda
+
+# Paths Configuration
+# -------------------
+# Output directory paths
+paths:
+  # Directory to save model checkpoints
+  checkpoint_dir: results/checkpoints
+
+  # Directory to save training logs (TensorBoard, CSV, etc.)
+  log_dir: results/logs
