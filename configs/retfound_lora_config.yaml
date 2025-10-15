@@ -88,13 +88,16 @@ image:
       p: 0.5
 
 data:
-  train_csv: "data/train.csv"
-  test_csv: "data/test.csv"
-  img_dir: "data/train_images"
+  # Pre-split CSV files (created with scripts/create_splits.py)
+  # These files are stratified by class to ensure balanced distribution
+  train_csv: "data/aptos/train_split.csv"
+  val_csv: "data/aptos/val_split.csv"
+  test_csv: "data/aptos/test.csv"
+  img_dir: "data/aptos/train_images"
 
-  # Data split
-  val_split: 0.2               # 80/20 train/val split
-  stratify: true               # Maintain class distribution
+  # Data split - DEPRECATED: splits now pre-defined in CSV files
+  # val_split: 0.2             # No longer used - splits are pre-created
+  # stratify: true             # Handled by create_splits.py
 
   # Data loading
   num_workers: 4

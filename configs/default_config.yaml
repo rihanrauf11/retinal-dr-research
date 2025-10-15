@@ -10,17 +10,23 @@
 # Data Configuration
 # ------------------
 # Paths to training and testing data
+# NOTE: Use pre-split files created by scripts/create_splits.py for consistent,
+#       stratified train/val splits across experiments
 data:
   # Path to training CSV file (must contain 'id_code' and 'diagnosis' columns)
-  train_csv: data/aptos/train.csv
+  # For pre-split data, use train_split.csv instead of train.csv
+  train_csv: data/aptos/train_split.csv
+
+  # Path to validation CSV file (stratified split)
+  val_csv: data/aptos/val_split.csv
 
   # Directory containing training images
   train_img_dir: data/aptos/train_images
 
-  # Path to test/validation CSV file
+  # Path to test CSV file
   test_csv: data/aptos/test.csv
 
-  # Directory containing test/validation images
+  # Directory containing test images
   test_img_dir: data/aptos/test_images
 
 # Model Configuration
