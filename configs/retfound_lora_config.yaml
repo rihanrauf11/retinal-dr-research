@@ -12,6 +12,9 @@
 
 model:
   model_name: retfound_lora
+  model_variant: large             # RETFound variant: 'large' (ViT-L, 303M) or 'green' (ViT-S, 21.3M)
+                                   # large: Original RETFound with 303M parameters, 1024D embeddings, 224x224 input
+                                   # green: Compact RETFound using timm ViT-Small with 21.3M parameters, 384D embeddings, 392x392 input
   num_classes: 5
   pretrained: true
   pretrained_path: "models/RETFound_cfp_weights.pth"

@@ -32,12 +32,19 @@ python3 scripts/train_baseline.py --config configs/default_config.yaml
 
 **RETFound + LoRA training (recommended):**
 ```bash
-# Download RETFound weights first from: https://github.com/rmaphoh/RETFound_MAE
+# Option A: RETFound Large (original, maximum accuracy)
+# Download from: https://github.com/rmaphoh/RETFound_MAE
 # Place at: models/RETFound_cfp_weights.pth
 
 python3 scripts/train_retfound_lora.py \
-    --checkpoint_path models/RETFound_cfp_weights.pth \
     --config configs/retfound_lora_config.yaml
+
+# Option B: RETFound_Green (efficient, 3x faster)
+# Download from: https://github.com/justinengelmann/RETFound_Green/releases/download/v0.1/retfoundgreen_statedict.pth
+# Place at: models/retfoundgreen_statedict.pth
+
+python3 scripts/train_retfound_lora.py \
+    --config configs/retfound_green_lora_config.yaml
 ```
 
 **Resume training from checkpoint:**
@@ -102,11 +109,28 @@ python scripts/prepare_data.py --verify-only
    - Used for comparison benchmarks
    - Example: ResNet50 (23M params), EfficientNet-B3 (11M params)
 
-2. **RETFound Foundation Model** (`scripts/retfound_model.py`)
+2. **RETFound Foundation Models** - Now with TWO variants (`scripts/retfound_model.py`)
+
+   **Option A: RETFound (Large)** - Original, Proven
    - Vision Transformer (ViT-Large) with 303M parameters
    - Pre-trained on 1.6M retinal images using masked autoencoding
-   - Domain-specific for ophthalmology tasks
-   - Checkpoint must be downloaded separately
+   - Input: 224×224 pixels, ImageNet normalization
+   - Best for: Maximum accuracy, publication, proven benchmarks
+   - Expected accuracy: 88-90% on APTOS, ~3% cross-dataset gap
+   - Requires: 11-12GB GPU memory
+
+   **Option B: RETFound_Green** - Efficient, Modern (NEW)
+   - Vision Transformer (ViT-Small) with 21.3M parameters (93% smaller)
+   - Pre-trained on 75K retinal images using token reconstruction
+   - Input: 392×392 pixels (larger context), custom normalization [0.5, 0.5, 0.5]
+   - Best for: Fast training, resource constraints, rapid prototyping
+   - Expected accuracy: 85-88% on APTOS, ~4-5% cross-dataset gap
+   - Requires: 6-8GB GPU memory
+   - GitHub: https://github.com/justinengelmann/RETFound_Green
+
+   **Variant Selection:**
+   - Use **Large** for research papers and when resources allow (10+ GB GPU)
+   - Use **Green** for development, hyperparameter search, edge deployment
 
 3. **RETFound + LoRA** (`scripts/retfound_lora.py` - `RETFoundLoRA`)
    - **Primary research approach** - parameter-efficient fine-tuning

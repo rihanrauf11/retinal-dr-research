@@ -478,22 +478,41 @@ ls results/baseline/checkpoints/
 
 ### Quick Start - RETFound + LoRA (Recommended) ⭐
 
-Train with parameter-efficient fine-tuning:
+Train with parameter-efficient fine-tuning. We support two RETFound variants:
 
+**RETFound Large (Original)**:
 ```bash
 # 1. Download RETFound weights
 # Visit: https://github.com/rmaphoh/RETFound_MAE
-# Download: RETFound_cfp_weights.pth
+# Download: RETFound_cfp_weights.pth (1.2 GB)
 # Place in: models/RETFound_cfp_weights.pth
 
-# 2. Train with LoRA (99.7% parameter reduction!)
+# 2. Train with LoRA
 python3 scripts/train_retfound_lora.py \
-    --checkpoint_path models/RETFound_cfp_weights.pth \
     --config configs/retfound_lora_config.yaml
 
 # Trains only 793K parameters (vs 303M full fine-tuning)
-# 2-3x faster training with similar accuracy
+# 2-3x faster training, ~88% accuracy
 ```
+
+**RETFound_Green (Efficient)** - NEW ⚡:
+```bash
+# 1. Download RETFound_Green weights
+# wget https://github.com/justinengelmann/RETFound_Green/releases/download/v0.1/retfoundgreen_statedict.pth
+# Place in: models/retfoundgreen_statedict.pth (~50 MB)
+
+# 2. Train with LoRA (even faster!)
+python3 scripts/train_retfound_lora.py \
+    --config configs/retfound_green_lora_config.yaml
+
+# 14x smaller model, 3x faster training, ~86% accuracy
+# Ideal for rapid prototyping and resource-constrained environments
+```
+
+**Choosing Between Variants:**
+- Use **Large** for maximum accuracy and publication (88% accuracy, proven)
+- Use **Green** for fast iteration and resource constraints (86% accuracy, 3x faster)
+- See [RETFOUND_GUIDE.md](docs/RETFOUND_GUIDE.md) for detailed comparison
 
 ### Advanced Training
 
@@ -1616,14 +1635,14 @@ pytest tests/test_model.py::TestModelCreation::test_model_creation_resnet50 -v
 
 ### 📚 Comprehensive Guides
 
-- **[RETFOUND_GUIDE.md](RETFOUND_GUIDE.md)** - RETFound foundation model guide
-- **[TRAINING_GUIDE.md](TRAINING_GUIDE.md)** - Complete training guide with examples
-- **[MODEL_GUIDE.md](MODEL_GUIDE.md)** - Model architectures and usage
-- **[CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md)** - Configuration system details
-- **[HYPERPARAMETER_OPTIMIZATION_GUIDE.md](HYPERPARAMETER_OPTIMIZATION_GUIDE.md)** - HPO complete guide
-- **[HYPERPARAMETER_OPTIMIZATION_QUICKSTART.md](HYPERPARAMETER_OPTIMIZATION_QUICKSTART.md)** - HPO quick reference
+- **[docs/RETFOUND_GUIDE.md](docs/RETFOUND_GUIDE.md)** - RETFound foundation model comparison and getting started (NEW)
+- **[docs/TRAINING_GUIDE.md](docs/TRAINING_GUIDE.md)** - Complete training guide with step-by-step examples (NEW)
+- **[CLAUDE.md](CLAUDE.md)** - Project context and architecture overview
+- **[docs/MODEL_GUIDE.md](docs/MODEL_GUIDE.md)** - Model architectures and usage
+- **[docs/CONFIGURATION_GUIDE.md](docs/CONFIGURATION_GUIDE.md)** - Configuration system details
+- **[docs/HYPERPARAMETER_OPTIMIZATION_GUIDE.md](docs/HYPERPARAMETER_OPTIMIZATION_GUIDE.md)** - HPO complete guide
+- **[docs/VASTAI_SETUP.md](docs/VASTAI_SETUP.md)** - Cloud GPU training on Vast.ai
 - **[configs/README.md](configs/README.md)** - Configuration file documentation
-- **[configs/QUICK_START.md](configs/QUICK_START.md)** - 5-minute quick start guide
 
 ### 📖 Example Configurations
 

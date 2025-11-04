@@ -87,6 +87,7 @@ try:
     from scripts.config import Config
     from scripts.dataset import RetinalDataset
     from scripts.retfound_lora import RETFoundLoRA
+    from scripts.retfound_model import detect_model_variant
     from scripts.utils import (
         set_seed, get_device, count_parameters,
         init_wandb, log_metrics_wandb, finish_wandb
@@ -95,6 +96,7 @@ except ModuleNotFoundError:
     from config import Config
     from dataset import RetinalDataset
     from retfound_lora import RETFoundLoRA
+    from retfound_model import detect_model_variant
     from utils import (
         set_seed, get_device, count_parameters,
         init_wandb, log_metrics_wandb, finish_wandb
@@ -122,7 +124,8 @@ class OptunaConfig:
 
         num_epochs: Maximum epochs per trial (reduced for speed)
         early_stopping_patience: Epochs to wait before early stopping
-        img_size: Input image size (224 for RETFound)
+        model_variant: RETFound variant ('large' or 'green')
+        img_size: Input image size (224 for large, 392 for green)
         num_workers: DataLoader workers
         seed: Random seed for reproducibility
 
@@ -149,6 +152,7 @@ class OptunaConfig:
     # Fixed training settings
     num_epochs: int = 10  # Reduced for faster trials
     early_stopping_patience: int = 3
+    model_variant: str = "large"  # RETFound variant: 'large' or 'green'
     img_size: int = 224
     num_workers: int = 4
     seed: int = 42
@@ -179,20 +183,37 @@ class OptunaConfig:
 # DATA LOADING
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def get_transforms(img_size: int, is_train: bool = True) -> A.Compose:
+def get_transforms(variant: str = "large", img_size: int = None, is_train: bool = True) -> A.Compose:
     """
-    Get data augmentation transforms.
+    Get data augmentation transforms with variant-aware normalization.
 
     Args:
-        img_size: Target image size
+        variant: RETFound variant ('large' or 'green')
+        img_size: Target image size (auto-detected if None)
         is_train: Whether training or validation transforms
 
     Returns:
         Albumentations composition
     """
+    # Auto-detect image size based on variant if not provided
+    if img_size is None:
+        img_size = 392 if variant == 'green' else 224
+
+    # Variant-specific normalization
+    if variant == 'green':
+        # RETFound_Green uses custom normalization
+        mean = [0.5, 0.5, 0.5]
+        std = [0.5, 0.5, 0.5]
+        resize_size = 416  # Slightly larger than input size
+    else:
+        # RETFound_Large uses ImageNet normalization
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+        resize_size = 256
+
     if is_train:
         transform = A.Compose([
-            A.Resize(256, 256),
+            A.Resize(resize_size, resize_size),
             A.RandomCrop(img_size, img_size),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.3),
@@ -210,19 +231,13 @@ def get_transforms(img_size: int, is_train: bool = True) -> A.Compose:
                 max_width=20,
                 p=0.5
             ),
-            A.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]
-            ),
+            A.Normalize(mean=mean, std=std),
             ToTensorV2()
         ])
     else:
         transform = A.Compose([
             A.Resize(img_size, img_size),
-            A.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]
-            ),
+            A.Normalize(mean=mean, std=std),
             ToTensorV2()
         ])
 
@@ -263,9 +278,17 @@ def create_data_loaders(
         generator=generator
     )
 
-    # Set transforms
-    train_transform = get_transforms(config.img_size, is_train=True)
-    val_transform = get_transforms(config.img_size, is_train=False)
+    # Set transforms with variant-aware normalization
+    train_transform = get_transforms(
+        variant=config.model_variant,
+        img_size=config.img_size,
+        is_train=True
+    )
+    val_transform = get_transforms(
+        variant=config.model_variant,
+        img_size=config.img_size,
+        is_train=False
+    )
 
     # Apply transforms (access underlying dataset)
     train_dataset.dataset.transform = train_transform
@@ -466,6 +489,7 @@ def create_objective(config: OptunaConfig):
             model = RETFoundLoRA(
                 checkpoint_path=config.checkpoint_path,
                 num_classes=5,  # DR has 5 classes
+                model_variant=config.model_variant,
                 lora_r=lora_r,
                 lora_alpha=lora_alpha,
                 lora_dropout=0.1,  # Fixed
@@ -1021,6 +1045,13 @@ def main():
         help='Epochs to wait before early stopping'
     )
     parser.add_argument(
+        '--model-variant',
+        type=str,
+        choices=['large', 'green'],
+        default='large',
+        help="RETFound variant: 'large' (303M params, 224x224) or 'green' (21.3M params, 392x392)"
+    )
+    parser.add_argument(
         '--num-workers',
         type=int,
         default=4,
@@ -1067,6 +1098,8 @@ def main():
         output_dir=args.output_dir,
         num_epochs=args.num_epochs,
         early_stopping_patience=args.early_stopping_patience,
+        model_variant=args.model_variant,
+        img_size=392 if args.model_variant == 'green' else 224,
         num_workers=args.num_workers,
         seed=args.seed,
         enable_wandb=args.wandb,

@@ -43,6 +43,7 @@ Example:
     >>> outputs = model(images)
 """
 
+import logging
 from pathlib import Path
 from typing import Optional, Union, Dict, Any, Tuple
 import warnings
@@ -51,29 +52,44 @@ import torch
 import torch.nn as nn
 from peft import get_peft_model, LoraConfig, TaskType, PeftModel
 
+logger = logging.getLogger(__name__)
+
 # Handle imports for both direct execution and module import
 try:
-    from scripts.retfound_model import load_retfound_model, VisionTransformer
+    from scripts.retfound_model import (
+        load_retfound_model,
+        load_retfound_green_model,
+        VisionTransformer
+    )
 except ModuleNotFoundError:
-    from retfound_model import load_retfound_model, VisionTransformer
+    from retfound_model import (
+        load_retfound_model,
+        load_retfound_green_model,
+        VisionTransformer
+    )
 
 
 class RETFoundLoRA(nn.Module):
     """
-    RETFound with LoRA adapters for parameter-efficient fine-tuning.
+    RETFound (or RETFound_Green) with LoRA adapters for parameter-efficient fine-tuning.
 
-    This class wraps the RETFound foundation model with Low-Rank Adaptation (LoRA)
+    This class wraps RETFound foundation models with Low-Rank Adaptation (LoRA)
     layers, enabling efficient fine-tuning on diabetic retinopathy classification
     with <1% of the original parameters.
 
+    Supports two variants:
+        - RETFound (Large): ViT-Large, 303M params, 1024D embeddings, 224×224 input
+        - RETFound_Green: ViT-Small, 21.3M params, 384D embeddings, 392×392 input
+
     Architecture:
-        1. RETFound backbone (ViT-Large) with frozen pretrained weights
+        1. RETFound backbone with frozen pretrained weights
         2. LoRA adapters on attention QKV projections (trainable)
-        3. Custom classification head: LayerNorm → Dropout → Linear (trainable)
+        3. Custom classification head (trainable)
 
     Args:
         checkpoint_path: Path to RETFound pretrained weights (.pth file)
         num_classes: Number of output classes for DR classification (default: 5)
+        model_variant: 'large' (ViT-Large, 303M) or 'green' (ViT-Small, 21.3M) (default: 'large')
         lora_r: LoRA rank - controls adapter capacity (default: 8)
                 Higher r = more capacity but more parameters
                 Typical values: 4, 8, 16, 32
@@ -122,6 +138,7 @@ class RETFoundLoRA(nn.Module):
         self,
         checkpoint_path: Union[str, Path],
         num_classes: int = 5,
+        model_variant: str = 'large',
         lora_r: int = 8,
         lora_alpha: int = 32,
         lora_dropout: float = 0.1,
@@ -132,7 +149,17 @@ class RETFoundLoRA(nn.Module):
         super().__init__()
 
         self.num_classes = num_classes
-        self.embed_dim = 1024  # ViT-Large embedding dimension
+        self.model_variant = model_variant
+        self.lora_r = lora_r
+        self.lora_alpha = lora_alpha
+
+        # Set embedding dimension based on variant
+        if model_variant == 'large':
+            self.embed_dim = 1024  # ViT-Large
+        elif model_variant == 'green':
+            self.embed_dim = 384   # ViT-Small
+        else:
+            raise ValueError(f"Unknown model_variant: {model_variant}. Must be 'large' or 'green'.")
 
         # Set device
         if device is None:
@@ -149,12 +176,23 @@ class RETFoundLoRA(nn.Module):
 
         # Step 1: Load base RETFound model without classification head
         print("\n[Step 1/4] Loading RETFound foundation model...")
-        self.backbone = load_retfound_model(
-            checkpoint_path=checkpoint_path,
-            num_classes=0,  # No classification head - we'll add our own
-            strict=False,
-            device=device
-        )
+        if model_variant == 'large':
+            logger.info("Loading RETFound (ViT-Large) backbone...")
+            self.backbone = load_retfound_model(
+                checkpoint_path=checkpoint_path,
+                num_classes=0,  # No classification head - we'll add our own
+                strict=False,
+                device=device
+            )
+        elif model_variant == 'green':
+            logger.info("Loading RETFound_Green (ViT-Small) backbone...")
+            self.backbone = load_retfound_green_model(
+                checkpoint_path=checkpoint_path,
+                num_classes=0,  # No classification head - we'll add our own
+                device=device
+            )
+        else:
+            raise ValueError(f"Unknown model_variant: {model_variant}. Must be 'large' or 'green'.")
 
         # Store original parameter count
         original_params = sum(p.numel() for p in self.backbone.parameters())
@@ -210,6 +248,8 @@ class RETFoundLoRA(nn.Module):
 
         print(f"\n{'=' * 70}")
         print(f"MODEL READY!")
+        print(f"  Variant: {model_variant.upper()} (embed_dim={self.embed_dim})")
+        print(f"  LoRA rank: {lora_r}, alpha: {lora_alpha}")
         print(f"  Total parameters: {total_params:,}")
         print(f"  Trainable parameters: {total_trainable:,} ({trainable_pct:.2f}%)")
         print(f"  Parameter efficiency: {total_params / total_trainable:.1f}x reduction")
@@ -278,6 +318,46 @@ class RETFoundLoRA(nn.Module):
         )
 
         return backbone_params + classifier_params
+
+    def get_trainable_params(self) -> int:
+        """
+        Return count of trainable parameters.
+
+        Returns:
+            Number of trainable parameters
+        """
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+    def get_frozen_params(self) -> int:
+        """
+        Return count of frozen parameters.
+
+        Returns:
+            Number of frozen parameters
+        """
+        return sum(p.numel() for p in self.parameters() if not p.requires_grad)
+
+    def print_trainable_summary(self) -> None:
+        """
+        Print summary of trainable vs frozen parameters.
+
+        Shows a formatted breakdown of parameter counts and percentages.
+        """
+        trainable = self.get_trainable_params()
+        frozen = self.get_frozen_params()
+        total = trainable + frozen
+        pct = 100.0 * trainable / total if total > 0 else 0
+
+        print(f"\n{'='*50}")
+        print(f"RETFound{'' if self.model_variant == 'large' else '_Green'} + LoRA Parameter Summary")
+        print(f"{'='*50}")
+        print(f"Model variant:        {self.model_variant.upper()}")
+        print(f"Embedding dimension:  {self.embed_dim}")
+        print(f"{'='*50}")
+        print(f"Total parameters:     {total:>12,} (100.0%)")
+        print(f"Trainable:            {trainable:>12,} ({pct:>5.2f}%)")
+        print(f"Frozen (backbone):    {frozen:>12,} ({100-pct:>5.2f}%)")
+        print(f"{'='*50}\n")
 
     def print_parameter_summary(self):
         """

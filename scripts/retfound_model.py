@@ -31,6 +31,7 @@ Example:
     ...     predictions = torch.argmax(outputs, dim=1)
 """
 
+import logging
 import math
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, Union
@@ -39,6 +40,9 @@ import warnings
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import timm
+
+logger = logging.getLogger(__name__)
 
 
 class PatchEmbed(nn.Module):
@@ -684,6 +688,213 @@ def load_retfound_model(
     return model
 
 
+def get_retfound_green(
+    pretrained: bool = False,
+    num_classes: int = 0,
+    img_size: int = 392,
+    **kwargs
+) -> nn.Module:
+    """
+    Create RETFound_Green model using timm.
+
+    RETFound_Green is a ViT-Small (21.3M params) trained with Token Reconstruction
+    on 75K retinal images. It produces 384-dimensional feature embeddings.
+
+    Args:
+        pretrained: If True, will attempt to load from timm (not available yet)
+        num_classes: Number of output classes. Use 0 for feature extraction mode.
+        img_size: Input image size (default 392x392)
+        **kwargs: Additional arguments passed to timm.create_model
+
+    Returns:
+        Vision Transformer model configured for retinal image analysis
+
+    Notes:
+        - Output embedding dimension: 384 (fixed by architecture)
+        - Requires separate loading of pretrained weights
+        - Uses mean=0.5, std=0.5 normalization (different from ImageNet)
+        - Input size: 392x392 (larger than original RETFound's 224x224)
+
+    Example:
+        >>> model = get_retfound_green()
+        >>> print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
+    """
+    model = timm.create_model(
+        'vit_small_patch14_reg4_dinov2',
+        img_size=(img_size, img_size),
+        num_classes=num_classes,
+        pretrained=pretrained,
+        **kwargs
+    )
+
+    # Verify architecture
+    assert hasattr(model, 'embed_dim'), "Model must have embed_dim attribute"
+    assert model.embed_dim == 384, f"Expected embed_dim=384, got {model.embed_dim}"
+
+    return model
+
+
+def load_retfound_green_model(
+    checkpoint_path: Union[str, Path],
+    num_classes: int = 5,
+    device: Optional[torch.device] = None,
+    strict: bool = True,
+) -> nn.Module:
+    """
+    Load RETFound_Green model with pretrained weights.
+
+    Args:
+        checkpoint_path: Path to pretrained weights (statedict format)
+        num_classes: Number of output classes for downstream classification
+        device: Device to place model on (auto-detected if None)
+        strict: If True, requires exact key match. If False, allows missing keys.
+
+    Returns:
+        Model with pretrained weights and classification head
+
+    Example:
+        >>> model = load_retfound_green_model(
+        ...     'models/retfoundgreen_statedict.pth',
+        ...     num_classes=5
+        ... )
+    """
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Create model in feature extraction mode (num_classes=0)
+    backbone = get_retfound_green(num_classes=0)
+
+    # Load pretrained weights
+    checkpoint_path = Path(checkpoint_path)
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+
+    try:
+        checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
+
+        # Extract state dict (handle different checkpoint formats)
+        if isinstance(checkpoint, dict):
+            # Try common keys
+            if 'model' in checkpoint:
+                state_dict = checkpoint['model']
+            elif 'state_dict' in checkpoint:
+                state_dict = checkpoint['state_dict']
+            elif 'model_state_dict' in checkpoint:
+                state_dict = checkpoint['model_state_dict']
+            else:
+                # Assume the entire dict is the state dict
+                state_dict = checkpoint
+        else:
+            state_dict = checkpoint
+
+        # Handle potential key mismatches (model may have been saved with different key names)
+        load_result = backbone.load_state_dict(state_dict, strict=strict)
+
+        if strict and (load_result.missing_keys or load_result.unexpected_keys):
+            logger.warning(
+                f"Load result - Missing keys: {load_result.missing_keys}, "
+                f"Unexpected keys: {load_result.unexpected_keys}"
+            )
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to load RETFound_Green checkpoint from {checkpoint_path}: {e}"
+        )
+
+    # Add classification head on top of frozen backbone
+    backbone = backbone.to(device)
+
+    # Create wrapper that adds classification head
+    class RETFoundGreenWithHead(nn.Module):
+        def __init__(self, backbone: nn.Module, num_classes: int):
+            super().__init__()
+            self.backbone = backbone
+            self.embed_dim = backbone.embed_dim  # 384
+            self.num_classes = num_classes
+
+            # Classification head
+            self.head = nn.Sequential(
+                nn.Linear(self.embed_dim, self.embed_dim),
+                nn.GELU(),
+                nn.Linear(self.embed_dim, num_classes)
+            )
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            # Extract features from backbone
+            features = self.backbone(x)  # Shape: [batch_size, 384]
+
+            # Pass through classification head
+            logits = self.head(features)  # Shape: [batch_size, num_classes]
+            return logits
+
+        def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+            """Extract 384-dimensional features without classification."""
+            return self.backbone(x)
+
+    model = RETFoundGreenWithHead(backbone, num_classes)
+    return model.to(device)
+
+
+def detect_model_variant(checkpoint_path: Union[str, Path]) -> str:
+    """
+    Detect whether a checkpoint is from RETFound (large) or RETFound_Green (green).
+
+    Uses heuristics based on:
+    1. Metadata in checkpoint (if available)
+    2. Parameter count
+    3. State dict keys
+
+    Args:
+        checkpoint_path: Path to checkpoint file
+
+    Returns:
+        'large' or 'green'
+
+    Raises:
+        ValueError: If variant cannot be determined
+    """
+    checkpoint_path = Path(checkpoint_path)
+
+    try:
+        checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+    except Exception as e:
+        raise ValueError(f"Cannot load checkpoint {checkpoint_path}: {e}")
+
+    # Check for explicit variant metadata
+    if isinstance(checkpoint, dict):
+        if 'lora_config' in checkpoint and 'variant' in checkpoint['lora_config']:
+            return checkpoint['lora_config']['variant']
+
+        # Extract state dict (handle different checkpoint formats)
+        if 'model' in checkpoint:
+            state_dict = checkpoint['model']
+        elif 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        elif 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+        else:
+            # Assume the entire dict is the state dict
+            state_dict = checkpoint
+
+        # Count parameters to estimate variant
+        param_count = sum(p.numel() for p in state_dict.values() if isinstance(p, torch.Tensor))
+
+        # Check for timm vs custom ViT architecture characteristics
+        # timm models (Green) have "ls1.gamma" and "ls2.gamma" (LayerScale parameters)
+        has_ls_gamma = any('ls1.gamma' in key or 'ls2.gamma' in key for key in state_dict.keys())
+
+        # If it has LayerScale parameters, it's timm-based (Green)
+        if has_ls_gamma:
+            return 'green'
+
+        # RETFound Large: ~303M params, Green: ~21.3M params
+        if param_count > 100_000_000:  # >100M = Large
+            return 'large'
+        else:
+            return 'green'
+
+    raise ValueError(f"Cannot determine model variant from {checkpoint_path}")
+
+
 def print_model_summary(model: VisionTransformer) -> None:
     """
     Print a summary of the Vision Transformer model.
@@ -866,14 +1077,47 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"✗ Test 8 failed: {e}")
 
+    # Test 9: Create RETFound_Green model
+    print("\n[Test 9] Creating RETFound_Green model...")
+    try:
+        green_model = get_retfound_green()
+        print(f"✓ RETFound_Green model created successfully")
+        print(f"  - Parameters: {sum(p.numel() for p in green_model.parameters()):,}")
+        print(f"  - Embedding dim: {green_model.embed_dim}")
+        assert green_model.embed_dim == 384, "Green model should have embed_dim=384"
+        assert sum(p.numel() for p in green_model.parameters()) > 20_000_000, "Green should have ~21M params"
+        print("✓ Test 9 passed")
+    except Exception as e:
+        print(f"✗ Test 9 failed: {e}")
+
+    # Test 10: RETFound_Green forward pass
+    print("\n[Test 10] Testing RETFound_Green forward pass...")
+    try:
+        batch_size = 2
+        images_green = torch.randn(batch_size, 3, 392, 392)
+
+        with torch.no_grad():
+            features = green_model(images_green)
+
+        print(f"✓ RETFound_Green forward pass successful")
+        print(f"  - Input shape: {images_green.shape}")
+        print(f"  - Output shape: {features.shape}")
+        assert features.shape == (batch_size, 384), f"Expected shape ({batch_size}, 384), got {features.shape}"
+        print("✓ Test 10 passed")
+    except Exception as e:
+        print(f"✗ Test 10 failed: {e}")
+
     # Final summary
     print("\n" + "=" * 70)
     print("ALL TESTS COMPLETED!")
     print("=" * 70)
-    print("\nRETFound model is ready for use!")
+    print("\nRETFound models are ready for use!")
     print("\nNext steps:")
-    print("1. Download RETFound weights from official repository")
-    print("2. Load model with: load_retfound_model('path/to/checkpoint.pth')")
-    print("3. Fine-tune on your diabetic retinopathy dataset")
-    print("4. Evaluate and compare with baseline models")
+    print("1. Download RETFound (Large) weights from official repository")
+    print("2. Download RETFound_Green weights from: https://github.com/justinengelmann/RETFound_Green")
+    print("3. Load models:")
+    print("   - Large: load_retfound_model('path/to/RETFound_cfp_weights.pth')")
+    print("   - Green: load_retfound_green_model('path/to/retfoundgreen_statedict.pth')")
+    print("4. Fine-tune on your diabetic retinopathy dataset")
+    print("5. Evaluate and compare with baseline models")
     print("=" * 70)

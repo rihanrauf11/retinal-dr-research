@@ -55,7 +55,7 @@ from albumentations.pytorch import ToTensorV2
 
 # Project modules
 try:
-    from scripts.config import Config
+    from scripts.config import Config, validate_config
     from scripts.dataset import RetinalDataset
     from scripts.retfound_lora import RETFoundLoRA
     # Wandb utilities
@@ -66,7 +66,7 @@ try:
     )
 except ModuleNotFoundError:
     # Handle direct execution from scripts directory
-    from config import Config
+    from config import Config, validate_config
     from dataset import RetinalDataset
     from retfound_lora import RETFoundLoRA
     from utils import (
@@ -96,7 +96,7 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = False
 
 
-def get_transforms(img_size: int) -> Tuple[A.Compose, A.Compose]:
+def get_transforms(img_size: int, model_variant: str = 'large') -> Tuple[A.Compose, A.Compose]:
     """
     Create training and validation transforms using Albumentations.
 
@@ -105,14 +105,23 @@ def get_transforms(img_size: int) -> Tuple[A.Compose, A.Compose]:
     representations.
 
     Args:
-        img_size: Target image size (typically 224 for RETFound)
+        img_size: Target image size (224 for RETFound Large, 392 for RETFound_Green)
+        model_variant: 'large' or 'green' - determines normalization values
 
     Returns:
         (train_transform, val_transform)
     """
-    # ImageNet normalization (standard for vision transformers)
-    mean = [0.485, 0.456, 0.406]
-    std = [0.229, 0.224, 0.225]
+    # Determine normalization based on variant
+    if model_variant == 'large':
+        # RETFound (ViT-Large) uses ImageNet normalization
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+    elif model_variant == 'green':
+        # RETFound_Green (ViT-Small) uses custom normalization
+        mean = [0.5, 0.5, 0.5]
+        std = [0.5, 0.5, 0.5]
+    else:
+        raise ValueError(f"Unknown model_variant: {model_variant}. Must be 'large' or 'green'.")
 
     # Training transforms with moderate augmentation
     # NOTE: LoRA benefits from augmentation but doesn't need as aggressive
@@ -262,6 +271,55 @@ def save_training_history(history: Dict, filepath: Path) -> None:
 
     with open(filepath, 'w') as f:
         json.dump(history, f, indent=2)
+
+
+def log_training_config(config: Config) -> None:
+    """
+    Log detailed training configuration to console and file.
+
+    Args:
+        config: Configuration object
+    """
+    print("\n" + "=" * 80)
+    print("TRAINING CONFIGURATION DETAILS")
+    print("=" * 80)
+
+    print("\n[Data Configuration]")
+    print(f"  Training CSV: {config.data.train_csv}")
+    print(f"  Image directory: {config.data.img_dir}")
+    print(f"  Validation split: {config.data.val_split}")
+    print(f"  Number of workers: {config.data.num_workers}")
+
+    print("\n[Image Configuration]")
+    print(f"  Input size: {config.image.input_size}x{config.image.input_size}")
+    print(f"  Normalization mean: {config.image.mean}")
+    print(f"  Normalization std: {config.image.std}")
+
+    print("\n[Model Configuration]")
+    print(f"  Model variant: {config.model.model_variant}")
+    print(f"  Number of classes: {config.model.num_classes}")
+    print(f"  LoRA rank (r): {config.model.lora_r}")
+    print(f"  LoRA alpha: {config.model.lora_alpha}")
+    print(f"  LoRA dropout: {config.model.lora_dropout}")
+    print(f"  Head dropout: {config.model.head_dropout}")
+    print(f"  Target modules: {config.model.target_modules}")
+
+    print("\n[Training Configuration]")
+    print(f"  Batch size: {config.training.batch_size}")
+    print(f"  Number of epochs: {config.training.num_epochs}")
+    print(f"  Learning rate: {config.training.learning_rate}")
+    print(f"  Weight decay: {config.training.weight_decay}")
+    print(f"  Early stopping patience: {config.training.early_stopping_patience}")
+
+    print("\n[System Configuration]")
+    print(f"  Device: {config.system.device}")
+    print(f"  Random seed: {config.system.seed}")
+
+    print("\n[Output Paths]")
+    print(f"  Output directory: {config.paths.output_dir}")
+    print(f"  Model variant: {config.model.model_variant}")
+
+    print("=" * 80 + "\n")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -566,7 +624,10 @@ def train(
     # Data Loading
     # ─────────────────────────────────────────────────────────────────────
     print(f"\n[INFO] Loading data...")
-    train_transform, val_transform = get_transforms(config.image.input_size)
+    train_transform, val_transform = get_transforms(
+        config.image.input_size,
+        model_variant=config.model.model_variant
+    )
     train_loader, val_loader = create_data_loaders(
         config, train_transform, val_transform
     )
@@ -584,10 +645,11 @@ def train(
     model = RETFoundLoRA(
         checkpoint_path=checkpoint_path,
         num_classes=config.model.num_classes,
+        model_variant=config.model.model_variant,
         lora_r=lora_r,
         lora_alpha=lora_alpha,
-        lora_dropout=0.1,
-        head_dropout=0.3,
+        lora_dropout=config.model.lora_dropout,
+        head_dropout=config.model.head_dropout,
         device=device
     )
 
@@ -799,7 +861,10 @@ def train(
                 'lora_config': {
                     'r': lora_r,
                     'alpha': lora_alpha,
-                    'checkpoint_path': checkpoint_path
+                    'checkpoint_path': checkpoint_path,
+                    'model_variant': config.model.model_variant,
+                    'embed_dim': model.embed_dim,
+                    'num_classes': config.model.num_classes
                 },
                 'best_acc': best_acc,
                 'history': history,
@@ -862,7 +927,10 @@ def train(
             'lora_config': {
                 'r': lora_r,
                 'alpha': lora_alpha,
-                'checkpoint_path': checkpoint_path
+                'checkpoint_path': checkpoint_path,
+                'model_variant': config.model.model_variant,
+                'embed_dim': model.embed_dim,
+                'num_classes': config.model.num_classes
             },
             'best_acc': best_acc,
             'history': history
@@ -982,6 +1050,16 @@ For more information, see RETFOUND_GUIDE.md
         help='Path to configuration YAML file (default: configs/retfound_lora_config.yaml)'
     )
 
+    # Model variant
+    parser.add_argument(
+        '--model_variant',
+        type=str,
+        choices=['large', 'green'],
+        default=None,
+        help='Foundation model variant: large (ViT-L, 303M) or green (ViT-S, 21.3M). '
+             'Overrides value in config if specified.'
+    )
+
     # LoRA hyperparameters
     parser.add_argument(
         '--lora_r',
@@ -1065,6 +1143,14 @@ For more information, see RETFOUND_GUIDE.md
     print(f"Loading configuration from: {args.config}")
     config = Config.from_yaml(args.config)
 
+    # Override model variant if specified via CLI
+    if args.model_variant is not None:
+        config.model.model_variant = args.model_variant
+        print(f"[INFO] Overriding model_variant with CLI argument: {args.model_variant}")
+
+    # Validate and update configuration for the selected variant
+    validate_config(config)
+
     # Override config with command-line arguments
     if args.batch_size is not None:
         config.training.batch_size = args.batch_size
@@ -1087,8 +1173,12 @@ For more information, see RETFOUND_GUIDE.md
     # Validate configuration
     config.validate(create_dirs=True)
 
-    # Print configuration summary
-    print("\nTraining Configuration:")
+    # Log detailed configuration
+    log_training_config(config)
+
+    # Print configuration summary (brief)
+    print("Quick Configuration Summary:")
+    print(f"  Model variant: {config.model.model_variant}")
     print(f"  Dataset: {config.data.train_csv}")
     print(f"  Output: {config.paths.output_dir}")
     print(f"  Batch size: {config.training.batch_size}")

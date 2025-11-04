@@ -71,11 +71,13 @@ try:
     from scripts.dataset import RetinalDataset
     from scripts.model import DRClassifier
     from scripts.retfound_lora import RETFoundLoRA
+    from scripts.retfound_model import detect_model_variant
 except ModuleNotFoundError:
     # Handle direct execution from scripts directory
     from dataset import RetinalDataset
     from model import DRClassifier
     from retfound_lora import RETFoundLoRA
+    from retfound_model import detect_model_variant
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -170,20 +172,28 @@ def load_baseline_model(
 def load_lora_model(
     checkpoint_path: str,
     device: torch.device
-) -> nn.Module:
+) -> Tuple[nn.Module, str]:
     """
-    Load RETFoundLoRA model from checkpoint.
+    Load RETFoundLoRA model from checkpoint with variant detection.
 
     Args:
         checkpoint_path: Path to checkpoint file
         device: Device to load model on
 
     Returns:
-        Loaded model in evaluation mode
+        (Loaded model in evaluation mode, detected variant)
     """
     print(f"[INFO] Loading LoRA model...")
 
     checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+
+    # Detect model variant
+    try:
+        variant = detect_model_variant(checkpoint_path)
+        print(f"[INFO] Detected variant: {variant}")
+    except Exception as e:
+        print(f"[WARNING] Could not detect variant: {e}. Defaulting to 'large'")
+        variant = 'large'
 
     # Get LoRA configuration
     lora_config = checkpoint.get('lora_config', {})
@@ -202,10 +212,11 @@ def load_lora_model(
     print(f"[INFO] LoRA rank: {lora_r}, alpha: {lora_alpha}")
     print(f"[INFO] Classes: {num_classes}")
 
-    # Create model
+    # Create model with detected variant
     model = RETFoundLoRA(
         checkpoint_path=retfound_path,
         num_classes=num_classes,
+        model_variant=variant,
         lora_r=lora_r,
         lora_alpha=lora_alpha,
         device=device
@@ -227,14 +238,14 @@ def load_lora_model(
     trainable = model.get_num_params(trainable_only=True)
     print(f"[INFO] Parameters: {total:,} total, {trainable:,} trainable ({100*trainable/total:.3f}%)")
 
-    return model
+    return model, variant
 
 
 def load_model_from_checkpoint(
     checkpoint_path: str,
     model_type: str = 'auto',
     device: str = 'cuda'
-) -> Tuple[nn.Module, str]:
+) -> Tuple[nn.Module, str, str]:
     """
     Load model from checkpoint with automatic type detection.
 
@@ -244,7 +255,7 @@ def load_model_from_checkpoint(
         device: Device to load model on
 
     Returns:
-        (model, detected_model_type)
+        (model, detected_model_type, detected_variant)
     """
     device = torch.device(device if torch.cuda.is_available() else 'cpu')
 
@@ -254,32 +265,45 @@ def load_model_from_checkpoint(
 
     # Load appropriate model
     if model_type == 'lora':
-        model = load_lora_model(checkpoint_path, device)
+        model, variant = load_lora_model(checkpoint_path, device)
     elif model_type == 'baseline':
         model = load_baseline_model(checkpoint_path, device)
+        # Baseline models default to 'large' variant (224x224 images)
+        variant = 'large'
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
 
-    return model, model_type
+    return model, model_type, variant
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # EVALUATION FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def get_evaluation_transform(img_size: int = 224) -> A.Compose:
+def get_evaluation_transform(variant: str = 'large', img_size: int = None) -> A.Compose:
     """
-    Create evaluation transform (no augmentation).
+    Create evaluation transform (no augmentation) with variant-specific settings.
 
     Args:
-        img_size: Target image size
+        variant: Model variant 'large' or 'green'
+        img_size: Target image size (optional, defaults based on variant)
 
     Returns:
         Albumentations transform
     """
-    # Standard ImageNet normalization
-    mean = [0.485, 0.456, 0.406]
-    std = [0.229, 0.224, 0.225]
+    # Determine normalization and size based on variant
+    if variant == 'large':
+        if img_size is None:
+            img_size = 224
+        mean = [0.485, 0.456, 0.406]  # ImageNet normalization
+        std = [0.229, 0.224, 0.225]
+    elif variant == 'green':
+        if img_size is None:
+            img_size = 392
+        mean = [0.5, 0.5, 0.5]  # Custom normalization for RETFound_Green
+        std = [0.5, 0.5, 0.5]
+    else:
+        raise ValueError(f"Unknown variant: {variant}. Must be 'large' or 'green'.")
 
     transform = A.Compose([
         A.Resize(img_size, img_size),
@@ -359,7 +383,8 @@ def evaluate_dataset(
     dataset_name: str,
     device: torch.device,
     batch_size: int = 32,
-    num_workers: int = 4
+    num_workers: int = 4,
+    variant: str = 'large'
 ) -> Dict:
     """
     Evaluate model on a single dataset.
@@ -372,14 +397,15 @@ def evaluate_dataset(
         device: Device to use for evaluation
         batch_size: Batch size for evaluation
         num_workers: Number of data loading workers
+        variant: Model variant ('large' or 'green')
 
     Returns:
         Dictionary containing metrics and predictions
     """
     print(f"\n[INFO] Evaluating on {dataset_name}...")
 
-    # Create transform
-    transform = get_evaluation_transform()
+    # Create transform with variant-specific settings
+    transform = get_evaluation_transform(variant=variant)
 
     # Create dataset
     try:
@@ -993,6 +1019,14 @@ Dataset format: name:csv_path:image_directory
         help='Save individual predictions to CSV files'
     )
 
+    parser.add_argument(
+        '--model_variant',
+        type=str,
+        choices=['auto', 'large', 'green'],
+        default='auto',
+        help='Model variant (default: auto-detect)'
+    )
+
     args = parser.parse_args()
 
     # Setup
@@ -1008,11 +1042,19 @@ Dataset format: name:csv_path:image_directory
 
     # Load model
     print(f"\n[INFO] Loading model from: {args.checkpoint}")
-    model, model_type = load_model_from_checkpoint(
+    model, model_type, detected_variant = load_model_from_checkpoint(
         args.checkpoint,
         args.model_type,
         args.device
     )
+
+    # Determine variant to use
+    if args.model_variant != 'auto':
+        variant = args.model_variant
+        print(f"[INFO] Using user-specified variant: {variant}")
+    else:
+        variant = detected_variant
+        print(f"[INFO] Using auto-detected variant: {variant}")
 
     # Parse dataset specifications
     datasets = []
@@ -1044,7 +1086,8 @@ Dataset format: name:csv_path:image_directory
             dataset_name=ds['name'],
             device=device,
             batch_size=args.batch_size,
-            num_workers=args.num_workers
+            num_workers=args.num_workers,
+            variant=variant
         )
 
         if metrics is not None:
@@ -1076,6 +1119,7 @@ Dataset format: name:csv_path:image_directory
     model_info = {
         'checkpoint_path': args.checkpoint,
         'model_type': model_type,
+        'model_variant': variant,
         'total_params': model.get_num_params(trainable_only=False) if hasattr(model, 'get_num_params') else None,
         'trainable_params': model.get_num_params(trainable_only=True) if hasattr(model, 'get_num_params') else None
     }
