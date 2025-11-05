@@ -273,14 +273,23 @@ class RETFoundLoRA(nn.Module):
         # Extract features from LoRA-adapted backbone
         # PeftModel wraps the base model, access it via base_model attribute
         if hasattr(self.backbone, 'base_model'):
-            # Use forward_features method for feature extraction
-            if hasattr(self.backbone.base_model, 'forward_features'):
-                features = self.backbone.base_model.forward_features(x)
+            base_model = self.backbone.base_model
+
+            # Try different methods to extract features
+            if hasattr(base_model, 'extract_features'):
+                # RETFoundGreenWithHead has extract_features method
+                features = base_model.extract_features(x)
+            elif hasattr(base_model, 'forward_features'):
+                # Standard timm models and RETFound Large have forward_features
+                features = base_model.forward_features(x)
             else:
-                features = self.backbone.base_model(x)
+                # Fallback: full forward pass
+                features = base_model(x)
         else:
             # Fallback for non-PEFT models
-            if hasattr(self.backbone, 'forward_features'):
+            if hasattr(self.backbone, 'extract_features'):
+                features = self.backbone.extract_features(x)
+            elif hasattr(self.backbone, 'forward_features'):
                 features = self.backbone.forward_features(x)
             else:
                 features = self.backbone(x)

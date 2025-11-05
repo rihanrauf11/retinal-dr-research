@@ -39,7 +39,7 @@ import json
 import time
 import argparse
 from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 from datetime import datetime
 
 import numpy as np

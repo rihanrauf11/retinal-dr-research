@@ -26,6 +26,10 @@ from torchvision import transforms
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
+# Configure matplotlib to use non-interactive backend (prevents hanging on visualization tests)
+import matplotlib
+matplotlib.use('Agg')
+
 # Add scripts to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'scripts'))

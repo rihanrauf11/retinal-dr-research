@@ -557,6 +557,7 @@ class TestMetricsCalculation:
 # CONFUSION MATRIX VISUALIZATION TESTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@pytest.mark.slow
 class TestConfusionMatrixVisualization:
     """Test confusion matrix plotting functions."""
 
@@ -671,6 +672,7 @@ class TestTrainingHistory:
         with pytest.raises(FileNotFoundError):
             load_training_history(temp_data_dir / "nonexistent.json")
 
+    @pytest.mark.slow
     def test_plot_training_history(self, temp_data_dir):
         """Test plotting training history."""
         history = {

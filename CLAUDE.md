@@ -32,19 +32,19 @@ python3 scripts/train_baseline.py --config configs/default_config.yaml
 
 **RETFound + LoRA training (recommended):**
 ```bash
-# Option A: RETFound Large (original, maximum accuracy)
-# Download from: https://github.com/rmaphoh/RETFound_MAE
-# Place at: models/RETFound_cfp_weights.pth
+# Option A: RETFound_Green (DEFAULT - efficient, 2-3x faster, 40% less memory)
+# Download: https://github.com/justinengelmann/RETFound_Green/releases/download/v0.1/retfoundgreen_statedict.pth
+# Place at: models/retfoundgreen_statedict.pth
 
 python3 scripts/train_retfound_lora.py \
     --config configs/retfound_lora_config.yaml
 
-# Option B: RETFound_Green (efficient, 3x faster)
-# Download from: https://github.com/justinengelmann/RETFound_Green/releases/download/v0.1/retfoundgreen_statedict.pth
-# Place at: models/retfoundgreen_statedict.pth
+# Option B: RETFound Large (original, maximum accuracy, requires more GPU memory)
+# Download from: https://github.com/rmaphoh/RETFound_MAE
+# Place at: models/RETFound_cfp_weights.pth
 
 python3 scripts/train_retfound_lora.py \
-    --config configs/retfound_green_lora_config.yaml
+    --config configs/retfound_large_lora_config.yaml
 ```
 
 **Resume training from checkpoint:**
@@ -109,28 +109,30 @@ python scripts/prepare_data.py --verify-only
    - Used for comparison benchmarks
    - Example: ResNet50 (23M params), EfficientNet-B3 (11M params)
 
-2. **RETFound Foundation Models** - Now with TWO variants (`scripts/retfound_model.py`)
+2. **RETFound Foundation Models** - Two variants with different tradeoffs (`scripts/retfound_model.py`)
 
-   **Option A: RETFound (Large)** - Original, Proven
-   - Vision Transformer (ViT-Large) with 303M parameters
-   - Pre-trained on 1.6M retinal images using masked autoencoding
-   - Input: 224×224 pixels, ImageNet normalization
-   - Best for: Maximum accuracy, publication, proven benchmarks
-   - Expected accuracy: 88-90% on APTOS, ~3% cross-dataset gap
-   - Requires: 11-12GB GPU memory
-
-   **Option B: RETFound_Green** - Efficient, Modern (NEW)
+   **Option A: RETFound_Green** - Efficient, Modern (DEFAULT RECOMMENDED)
    - Vision Transformer (ViT-Small) with 21.3M parameters (93% smaller)
    - Pre-trained on 75K retinal images using token reconstruction
    - Input: 392×392 pixels (larger context), custom normalization [0.5, 0.5, 0.5]
-   - Best for: Fast training, resource constraints, rapid prototyping
+   - Best for: Fast training, resource constraints, most use cases, edge deployment
    - Expected accuracy: 85-88% on APTOS, ~4-5% cross-dataset gap
    - Requires: 6-8GB GPU memory
+   - Training time: ~3 hours for 20 epochs (RTX 3090)
    - GitHub: https://github.com/justinengelmann/RETFound_Green
 
+   **Option B: RETFound (Large)** - Original, Maximum Accuracy
+   - Vision Transformer (ViT-Large) with 303M parameters
+   - Pre-trained on 1.6M retinal images using masked autoencoding
+   - Input: 224×224 pixels, ImageNet normalization
+   - Best for: Maximum accuracy needed, publication benchmarks, abundant compute
+   - Expected accuracy: 88-90% on APTOS, ~3% cross-dataset gap
+   - Requires: 11-12GB GPU memory
+   - Training time: ~5 hours for 20 epochs (RTX 3090)
+
    **Variant Selection:**
-   - Use **Large** for research papers and when resources allow (10+ GB GPU)
-   - Use **Green** for development, hyperparameter search, edge deployment
+   - Use **Green** by default (faster training, less memory, only 2-3% lower accuracy)
+   - Use **Large** only if you need maximum accuracy and have sufficient GPU memory (10+ GB)
 
 3. **RETFound + LoRA** (`scripts/retfound_lora.py` - `RETFoundLoRA`)
    - **Primary research approach** - parameter-efficient fine-tuning
@@ -328,23 +330,27 @@ This logs: hyperparameters, metrics per epoch, sample predictions, confusion mat
 ## Performance Expectations
 
 **Training time (on RTX 3090, 3662 images):**
+- **RETFound_Green + LoRA (r=8):** ~3 hours (20 epochs) ← DEFAULT
+- **RETFound Large + LoRA (r=8):** ~5 hours (20 epochs)
 - Baseline ResNet50: ~4 hours (30 epochs)
-- RETFound + LoRA (r=8): ~5 hours (20 epochs)
 - Full RETFound fine-tuning: ~12 hours (20 epochs)
 
 **Memory usage:**
-- RETFound + LoRA: ~6-8GB GPU (batch_size=32)
-- Full fine-tuning: ~11-12GB GPU (batch_size=32)
+- **RETFound_Green + LoRA:** ~6-8GB GPU (batch_size=48) ← DEFAULT
+- **RETFound Large + LoRA:** ~11-12GB GPU (batch_size=32)
 - Baseline ResNet50: ~4-5GB GPU (batch_size=32)
+- Full fine-tuning: ~11-12GB GPU (batch_size=32)
 
 **Expected accuracies (on APTOS validation set):**
+- **RETFound_Green + LoRA (r=8):** 85-88% ← DEFAULT
+- **RETFound Large + LoRA (r=8):** 88-89%
 - Baseline ResNet50: 82-85%
-- RETFound + LoRA (r=8): 88-89%
 - Full RETFound fine-tuning: 89-90%
 
 **Cross-dataset generalization gap:**
+- RETFound_Green + LoRA: ~4-5% drop
+- RETFound Large + LoRA: ~3% drop (50% reduction in gap)
 - ResNet50: ~7% drop on new datasets
-- RETFound + LoRA: ~3% drop (50% reduction in gap)
 
 ## Important Notes
 

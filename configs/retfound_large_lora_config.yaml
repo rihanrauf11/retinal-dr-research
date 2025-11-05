@@ -1,23 +1,24 @@
-# RETFound_Green + LoRA Configuration for Diabetic Retinopathy Classification
+# RETFound (Large) + LoRA Configuration for Diabetic Retinopathy Classification
 #
-# This configuration uses RETFound_Green (efficient variant) with Low-Rank Adaptation (LoRA)
-# for parameter-efficient fine-tuning. RETFound_Green is 93% smaller with 2-3x faster training.
+# This configuration uses RETFound Large (original variant) with Low-Rank Adaptation (LoRA)
+# for parameter-efficient fine-tuning. Use this when maximum accuracy is required.
+#
+# Note: For most use cases, RETFound_Green is recommended (see retfound_lora_config.yaml).
+# Use this config only if you need 2-3% higher accuracy and have sufficient compute resources.
 #
 # Key Benefits:
-# - 99.7% reduction in trainable parameters (vs full model)
-# - 2-3x faster training than RETFound Large
-# - 40-50% less memory usage (6-8GB vs 11-12GB)
-# - Prevents catastrophic forgetting
-# - Only 2-3% accuracy drop vs Large variant
+# - 99.7% reduction in trainable parameters
+# - Higher accuracy (88-90% vs 85-88% for Green)
+# - Proven performance on published benchmarks
+# - Requires more memory (11-12GB vs 6-8GB)
 
 model:
   model_name: retfound_lora
-  model_variant: green             # RETFound variant: 'green' (ViT-S, 21.3M) [DEFAULT] or 'large' (ViT-L, 303M)
-                                   # green: Compact, efficient variant using timm ViT-Small, 21.3M params, 384D embeddings, 392x392 input (RECOMMENDED)
-                                   # large: Original RETFound with 303M parameters, 1024D embeddings, 224x224 input
+  model_variant: large             # RETFound Large (original, ViT-L, 303M parameters)
+                                   # For RETFound_Green alternative, see retfound_lora_config.yaml
   num_classes: 5
   pretrained: true
-  pretrained_path: "models/retfoundgreen_statedict.pth"  # RETFound_Green checkpoint (85-88% accuracy)
+  pretrained_path: "models/RETFound_cfp_weights.pth"  # Original RETFound checkpoint (requires manual download)
 
   # LoRA-specific parameters
   lora_r: 8                    # LoRA rank (controls adapter capacity)
@@ -38,8 +39,8 @@ model:
 
 training:
   # LoRA typically needs higher learning rate than full fine-tuning
-  # RETFound_Green requires less memory, allowing larger batch sizes
-  batch_size: 48               # Can use larger batch with Green (less memory: 6-8GB)
+  # Because we're only training adapters, not updating pretrained weights
+  batch_size: 32               # Can use larger batch with LoRA (less memory)
   num_epochs: 20               # LoRA often converges faster
   learning_rate: 0.0005        # Higher LR than full fine-tuning (1e-4 to 5e-4)
   weight_decay: 0.01           # Weight decay for regularization
@@ -65,17 +66,17 @@ training:
   mixed_precision: true
 
 image:
-  # RETFound_Green was pretrained on 392x392 images (larger context window)
-  input_size: 392
+  # RETFound was pretrained on 224x224 images
+  input_size: 224
 
-  # RETFound_Green uses [0.5, 0.5, 0.5] normalization (not ImageNet)
-  mean: [0.5, 0.5, 0.5]
-  std: [0.5, 0.5, 0.5]
+  # ImageNet normalization (standard for ViT)
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
 
   # Data augmentation (applied to training set only)
   augmentation:
-    resize: 416                # Resize before random crop (slightly larger than input)
-    random_crop: 392           # Random crop to input size
+    resize: 256                # Resize before random crop
+    random_crop: 224           # Random crop to input size
     horizontal_flip: 0.5       # 50% chance of horizontal flip
     vertical_flip: 0.3         # 30% chance of vertical flip
     rotation: 15               # Random rotation up to ±15 degrees
